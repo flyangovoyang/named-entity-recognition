@@ -7,13 +7,13 @@ from allennlp.modules.conditional_random_field import ConditionalRandomField as 
 
 class BERT_LSTM_CRF(nn.Module):
     def __init__(
-            self, 
-            bert, 
+            self,
+            bert,
             bert_hidden_size,
-            num_tags, 
-            use_lstm=None,  
-            lstm_hidden_size=None, 
-            id2tag=None, 
+            num_tags,
+            use_lstm=None,
+            lstm_hidden_size=None,
+            id2tag=None,
             dropout_rate=0.0
         ):
         """
@@ -38,13 +38,14 @@ class BERT_LSTM_CRF(nn.Module):
         """
         when in `inference` mode, return list [B, ?]
         """
+        bert_hidden_states, _ = self.bert(input_ids)
+        if self.use_lstm:
+            lstm_hidden_states, _ = self.lstm(bert_hidden_states)
+            token_logits = self.linear(self.dropout(lstm_hidden_states))
+        else:
+            token_logits = self.linear(self.dropout(bert_hidden_states))
+        
         if mode == 'train':
-            bert_hidden_states, _ = self.bert(input_ids)
-            if self.use_lstm:
-                lstm_hidden_states, _ = self.lstm(bert_hidden_states)
-                token_logits = self.linear(self.dropout(lstm_hidden_states))
-            else:
-                token_logits = self.linear(self.dropout(bert_hidden_states))
             loss = -self.crf_layer.forward(inputs=token_logits, tags=tags, mask=input_masks)/token_logits.size(0)
             return loss
         elif mode == 'inference':
