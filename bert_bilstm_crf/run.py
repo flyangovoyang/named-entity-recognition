@@ -18,7 +18,7 @@ import random
 from metric import fmeasure_from_singlefile
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -27,18 +27,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(mes
 def train(model, tokenizer, device, train_data_loader, eval_dataloader, args):
     logging.info('start to train...')
 
-    crf_params_list = ['crf_layer.transitions', 'crf_layer._constraint_mask', 'crf_layer.start_transitions',
-                       'crf_layer.end_transitions']  # , 'linear_weight', 'linear_bias'
-    crf_params = list(map(lambda x: x[1], list(filter(lambda kv: kv[0] in crf_params_list, model.named_parameters()))))
-    other_params = list(
-        map(lambda x: x[1], list(filter(lambda kv: kv[0] not in crf_params_list, model.named_parameters()))))
+    bert_params = []
+    other_params = []
+    num_total_params = []
+    for k, v in model.named_parameters():
+        num_total_params += v.numel()
+        if k.startswith('bert'):
+            bert_params.append(v)
+        else:
+            other_params.append(v)
 
-    optimizer = optim.Adam([
-        {"params": crf_params, "lr": args.crf_learning_rate},
-        {"params": other_params}
-    ], lr=args.learning_rate)
+    logging.info('total params:{}'.format(num_total_params))
 
-    # optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = optim.Adam([{"params": bert_params, "lr": args.bert_learning_rate},
+                            {"params": other_params, "lr": args.other_learning_rate}])
+
     best_metric_score = 0
     for epoch in range(args.train_epochs):
         for batch_id, batch in enumerate(train_data_loader):
@@ -162,16 +165,18 @@ def main(args, processor, tokenizer):
     # load pretrained model
     logging.info('loading pretrained model...')
     if args.model_card == 'hfl/chinese-roberta-wwm-ext-large':
-        config = BertConfig.from_pretrained('hfl-roberta-wwm-ext-large/config.json')
-        bert = BertModel.from_pretrained('hfl-roberta-wwm-ext-large/pytorch_model.bin', config=config)
+        config = BertConfig.from_pretrained('../pretrained_model/roberta/hfl-roberta-wwm-ext-large/config.json')
+        bert = BertModel.from_pretrained('../pretrained_model/roberta/hfl-roberta-wwm-ext-large/pytorch_model.bin', config=config)
     else:
         bert = BertModel.from_pretrained(args.model_card)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info('device: {}'.format(device))
-    model = BERT_LSTM_CRF(bert,
-                          args.num_tags,
-                          args.lstm_hidden_size,
+    model = BERT_LSTM_CRF(bert=bert,
+                          bert_hidden_size=args.bert_hidden_size,
+                          num_tags=args.num_tags,
+                          use_lstm=args.use_lstm,
+                          lstm_hidden_size=args.lstm_hidden_size,
                           id2tag=args.id2tag,
                           dropout_rate=args.dropout_rate).to(device)
 
@@ -202,72 +207,31 @@ def main(args, processor, tokenizer):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--verbose_logging",
-                        default=False,
-                        action="store_true",
-                        help="whether output data examples")
-    parser.add_argument("--do_train",
-                        default=False,
-                        action="store_true",
-                        help="train mode")
-    parser.add_argument("--do_eval",
-                        default=False,
-                        action="store_true",
-                        help="eval mode")
-    parser.add_argument("--do_predict",
-                        default=True,
-                        action="store_true",
-                        help="predict mode")
-    parser.add_argument("--train_epochs",
-                        default=40,
-                        type=int,
-                        help="")
-    parser.add_argument("--dataset",
-                        default="cluener",
-                        type=str,
-                        help="")
-    parser.add_argument("--dump_model_path",
-                        default="models",
-                        type=str,
-                        help="")
-    parser.add_argument("--init_checkpoint",
-                        default="seed-40-dropout-0-14",
-                        type=str,
-                        help="")
-    parser.add_argument("--dump_model",
-                        default=False,
-                        action="store_true",
-                        help="whether dump model during the training or evaluation")
-    parser.add_argument("--lstm_hidden_size",
-                        default=128,
-                        type=int)
-    parser.add_argument("--dropout_rate",
-                        default=0,
-                        type=float)
-    parser.add_argument("--max_seq_len",
-                        default=60,
-                        type=int)
-    parser.add_argument("--batch_size",
-                        default=32,
-                        type=int)
-    parser.add_argument("--seed",
-                        default=100,
-                        type=int)
-    parser.add_argument("--optimizer",
-                        default="adam",
-                        type=str)
-    parser.add_argument("--learning_rate",
-                        default=1e-5,
-                        type=float)
-    parser.add_argument("--crf_learning_rate",
-                        default=0.01,
-                        type=float)
-    parser.add_argument("--model_card",
-                        default="hfl/chinese-roberta-wwm-ext-large",  # bert-base-chinese
-                        type=str)
-    parser.add_argument("--model_name",
-                        default="roberta-wwm-ext-bilstm-crf",
-                        type=str)
+    parser.add_argument("--verbose_logging", default=False, action="store_true", help="output data examples")
+    parser.add_argument("--do_train", default=False, action="store_true", help="train mode")
+    parser.add_argument("--do_eval", default=False, action="store_true", help="eval mode")
+    parser.add_argument("--do_predict", default=False, action="store_true", help="predict mode")
+    parser.add_argument("--use_lstm", default=False, action="store_true", help="whether add lstm layers")
+    parser.add_argument("--dump_model", default=False, action="store_true", help="whether dump model")
+
+    parser.add_argument("--init_checkpoint", default="seed-40-dropout-0-14", type=str, help="specify model name")
+    parser.add_argument("--train_epochs", default=40, type=int, help="maximum epochs")
+    parser.add_argument("--dataset", default="cluener", type=str, help="dataset name")
+    parser.add_argument("--dump_model_path", default="models", type=str, help="directory")
+
+    parser.add_argument("--model_card", default="hfl/chinese-roberta-wwm-ext-large", type=str)  # bert-base-chinese
+    parser.add_argument("--model_name", default="roberta-wwm-ext-bilstm-crf", type=str)
+
+    # model parameters
+    parser.add_argument("--bert_hidden_size", default=1024, type=int)  # 768
+    parser.add_argument("--lstm_hidden_size", default=128, type=int)
+    parser.add_argument("--dropout_rate", default=0, type=float)
+    parser.add_argument("--max_seq_len", default=60, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--seed", default=100, type=int)
+    parser.add_argument("--optimizer", default="adam", type=str)
+    parser.add_argument("--bert_learning_rate", default=1e-5, type=float)
+    parser.add_argument("--other_learning_rate", default=0.01, type=float)
 
     pre_args = parser.parse_args()
 
@@ -334,7 +298,7 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
 
     if arguments.model_card == 'hfl/chinese-roberta-wwm-ext-large':
-        tokenizer = BertTokenizerFast('hfl-roberta-wwm-ext-large/vocab.txt')
+        tokenizer = BertTokenizerFast('../pretrained_model/roberta/hfl-roberta-wwm-ext-large/vocab.txt')
     else:
         tokenizer = BertTokenizer.from_pretrained(arguments.model_card)
 
@@ -343,5 +307,24 @@ if __name__ == '__main__':
 
 
 '''
-python run_bert_crf.py --do_train --dump_model --model_name seed-40-dropout-0
+python run_bert_crf.py  --do_eval \
+                        --init_checkpoint roberta-wwm-ext-bilstm-crf-2 \
+                        --use_lstm \
+                        --batch_size 32 \
+                        --bert_hidden_size 1024 \
+                        --model_name robert-wwm-ext-crf
+
+python run_bert_crf.py  --do_predict \
+                        --init_checkpoint roberta-wwm-ext-bilstm-crf-2 \
+                        --use_lstm \
+                        --batch_size 32 \
+                        --bert_hidden_size 1024 \
+                        --model_name robert-wwm-ext-crf
+
+python run_bert_crf.py  --do_train \
+                        --dataset cluener \
+                        --batch_size 32 \
+                        --bert_hidden_size 1024 \
+                        --model_name robert-wwm-ext-crf \
+                        --other_learning_rate 0.1
 '''
