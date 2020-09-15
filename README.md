@@ -1,19 +1,23 @@
 # named-entity-recognition
 
-## Choice
+This is a stable version of code for sequence tagging task.
 
-Model|Thinking
-:--:|:--
-BiLSTM-CRF|embedding combination can improve performance
-Lattice LSTM|model overcomplicated, slow inference
-Softlexicon|need lexicon character + word embedding, powerful when there are many word combinations for character sequence
-Character Embedding + BERT-BiLSTM-CRF|using bert as a feature extractor, which means BERT's parameters are kept frozen all the time
-BERT-CRF|
-BERT-BiLSTM-CRF|
-RoBERTa-CRF|
-RoBERTa-BiLSTM-CRF|
+## BERT-BiLSTM-CRF
 
-others:
+directory `bert_bilstm_crf` consists of four python scripts:
 
-- CRF is highly recommended, cause I found it could bring further improvements for serveral models.
-- When using pretrained language model, I am not willing to integrate traditional word embedding anymore, although this choice needs to be verified.
+- `crf.py`: utility function and class for conditional random field layer, which is called by `bert_lstm_crf.py`
+- `bert_lstm_crf.py`: bert+bilstm+crf model implementation, in which bilstm layer is optional
+- `ner_data_util.py`: text sequence's encoding and decoding, and build dataloader 
+- `run_bert_crf.py`: running script, more guides are within it.
+
+when running this model, please download pretrained model(not limited to BERT, roberta is supported too.) files from huggingface transformer, which includes three files: config, vocab, model binary file.
+
+modify all the directory paths to fits your own running environment.
+
+## SoftLexicon
+
+directory `soft_lexicon` currently consists of only one python script:
+
+- `protype.py`: input preparation for SoftLexicon
+

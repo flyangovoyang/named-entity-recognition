@@ -1,21 +1,12 @@
 import torch.nn as nn
 import torch
 from torch.nn import Linear, Dropout, LSTM
-from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
-# from allennlp.modules.conditional_random_field import allowed_transitions
+from crf import ConditionalRandomField as CRF
 
 
 class BERT_LSTM_CRF(nn.Module):
-    def __init__(
-            self,
-            bert,
-            bert_hidden_size,
-            num_tags,
-            use_lstm=None,
-            lstm_hidden_size=None,
-            id2tag=None,
-            dropout_rate=0.0
-        ):
+    def __init__(self, bert, bert_hidden_size, num_tags, use_lstm=None, lstm_hidden_size=None, id2tag=None,
+                 dropout_rate=0.0):
         """
         crf is required, lstm is optional
         """
@@ -28,7 +19,7 @@ class BERT_LSTM_CRF(nn.Module):
                              batch_first=True,
                              bidirectional=True,
                              num_layers=1)
-            self.linear = Linear(2*lstm_hidden_size, num_tags)
+            self.linear = Linear(2 * lstm_hidden_size, num_tags)
         else:
             self.linear = Linear(bert_hidden_size, num_tags)
         self.dropout = Dropout(p=dropout_rate)
@@ -44,9 +35,9 @@ class BERT_LSTM_CRF(nn.Module):
             token_logits = self.linear(self.dropout(lstm_hidden_states))
         else:
             token_logits = self.linear(self.dropout(bert_hidden_states))
-        
+
         if mode == 'train':
-            loss = -self.crf_layer.forward(inputs=token_logits, tags=tags, mask=input_masks)/token_logits.size(0)
+            loss = -self.crf_layer.forward(inputs=token_logits, tags=tags, mask=input_masks) / token_logits.size(0)
             return loss
         elif mode == 'inference':
             crf_res = self.crf_layer.viterbi_tags(logits=token_logits, mask=input_masks)
