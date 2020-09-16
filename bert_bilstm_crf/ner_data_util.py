@@ -280,24 +280,3 @@ class NerTokenizer:
         sampler = RandomSampler(dataset) if sample == 'random' else SequentialSampler(dataset)
         dataloader = DataLoader(dataset, batch_size, sampler)
         return dataloader
-
-
-def main():
-    ptm_tokenizer = BertTokenizerFast('../pretrained_model/roberta/hfl-roberta-wwm-ext-large/vocab.txt')
-    ner_tokenizer = NerTokenizer(
-        ['address', 'name', 'organization', 'game', 'scene', 'book', 'company', 'position', 'government', 'movie'],
-        max_seq_len=100,
-        tagging_schema='BMES',
-        ptm_tokenizer=ptm_tokenizer,
-        debug=True
-    )
-    # features = ner_tokenizer.read_corpus_file('../resource/cluener/test.bmes.data')
-    # dataloader = ner_tokenizer.build_dataloader(features, 3, 'random')
-    # for input_ids, input_masks, tag_ids in dataloader:
-    #     print(input_ids, input_masks, tag_ids)
-    #     assert 0
-    print(ner_tokenizer.parse_entity_from_ch_tag(['B-a', 'E-a']))
-
-
-if __name__ == '__main__':
-    main()
